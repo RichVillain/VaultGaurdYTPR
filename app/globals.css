@@ -1,0 +1,174 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --bg: #16181d;
+  --bg-elevated: #20232b;
+  --bg-elevated-2: #20242d;
+  --border: #2b303b;
+  --border-soft: #303541;
+  --text: #f4f0e8;
+  --text-muted: #9ca3b0;
+  --text-faint: #737b8a;
+  --accent: #ef765e;
+  --accent-bg: #38231f;
+  --cyan: #8de0ed;
+  --green: #78cfa9;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+kbd {
+  font-family: ui-monospace, monospace;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  font-size: 0.7rem;
+}
+
+@layer components {
+  .ytpr-shell {
+    @apply min-h-screen w-full;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .ytpr-topbar {
+    @apply sticky top-0 z-30 flex items-center justify-between gap-3 px-4 py-3;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .ytpr-mark {
+    @apply flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold;
+    background: var(--accent);
+    color: #191b20;
+  }
+
+  .ytpr-quiet-button {
+    @apply rounded-lg border px-3 py-2 text-xs font-medium transition-colors;
+    border-color: var(--border-soft);
+    color: var(--text);
+  }
+  .ytpr-quiet-button:hover {
+    background: var(--bg-elevated);
+  }
+
+  .ytpr-layout {
+    @apply mx-auto flex w-full max-w-[1400px] flex-col gap-0 lg:flex-row;
+  }
+
+  .ytpr-sidebar {
+    @apply flex w-full shrink-0 flex-col border-b p-3 lg:h-[calc(100vh-57px)] lg:w-60 lg:border-b-0 lg:border-r lg:p-4;
+    border-color: var(--border);
+  }
+
+  .ytpr-nav-item {
+    @apply flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors;
+    color: var(--text-muted);
+    min-height: 44px;
+  }
+  .ytpr-nav-item:hover {
+    background: var(--bg-elevated);
+    color: var(--text);
+  }
+  .ytpr-nav-item.active {
+    background: var(--accent-bg);
+    color: var(--accent);
+  }
+
+  .ytpr-nav-glyph {
+    @apply flex h-5 w-5 items-center justify-center text-[13px];
+  }
+
+  .ytpr-main {
+    @apply min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8;
+  }
+
+  .ytpr-toast {
+    @apply mb-5 flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm;
+    background: var(--accent-bg);
+    border-color: #744535;
+    color: var(--text);
+  }
+  .ytpr-toast button {
+    @apply text-lg leading-none opacity-70;
+  }
+  .ytpr-toast button:hover {
+    @apply opacity-100;
+  }
+
+  .ytpr-panel {
+    @apply rounded-2xl border;
+    background: var(--bg-elevated);
+    border-color: var(--border-soft);
+  }
+
+  .ytpr-stat {
+    @apply rounded-2xl border p-5;
+    background: var(--bg-elevated);
+    border-color: var(--border-soft);
+  }
+
+  .ytpr-primary-button {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold transition-opacity;
+    background: var(--accent);
+    color: #191b20;
+    min-height: 44px;
+  }
+  .ytpr-primary-button:hover {
+    opacity: 0.9;
+  }
+
+  .ytpr-secondary-button {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors;
+    border-color: var(--border-soft);
+    color: var(--text);
+    min-height: 44px;
+  }
+  .ytpr-secondary-button:hover {
+    background: var(--bg-elevated-2);
+  }
+
+  .ytpr-textarea {
+    @apply w-full rounded-lg border p-3 text-sm outline-none;
+    background: var(--bg);
+    border-color: var(--border-soft);
+    color: var(--text);
+    min-height: 140px;
+  }
+  .ytpr-textarea:focus {
+    border-color: var(--accent);
+  }
+
+  .ytpr-input {
+    @apply w-full rounded-lg border px-3 py-2.5 text-sm outline-none;
+    background: var(--bg);
+    border-color: var(--border-soft);
+    color: var(--text);
+    min-height: 44px;
+  }
+  .ytpr-input:focus {
+    border-color: var(--accent);
+  }
+
+  .ytpr-video-placeholder {
+    @apply flex flex-col items-center justify-center border-b p-10 text-center;
+    border-color: var(--border);
+    background: var(--bg);
+    aspect-ratio: 16 / 9;
+  }
+
+  .ytpr-play {
+    @apply flex h-14 w-14 items-center justify-center rounded-full text-xl;
+    background: var(--accent);
+    color: #191b20;
+  }
+}

@@ -1,4 +1,0 @@
-flask>=3.0
-yt-dlp
-scikit-learn
-gunicorn
