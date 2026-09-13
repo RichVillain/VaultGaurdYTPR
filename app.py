@@ -509,4 +509,5 @@ if __name__ == "__main__":
     # Bind to 0.0.0.0 so it is reachable on local network (iPhone can hit your computer IP)
     print("YT VaultGuard v2 → http://0.0.0.0:5055")
     print("On iPhone: open http://<your-computer-local-ip>:5055")
-    app.run(host="0.0.0.0", port=5055, debug=False)
+    port = int(os.environ.get("PORT", 5055))
+    app.run(host="0.0.0.0", port=port, debug=False)
