@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSource } from "@/lib/store";
 import { buildObsidianVault } from "@/lib/obsidian";
 
+/** Returns an Obsidian-ready ZIP for a stored source, or a JSON error when the source cannot be loaded. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 

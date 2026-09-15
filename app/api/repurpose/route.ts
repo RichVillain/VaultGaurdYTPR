@@ -6,6 +6,7 @@ const VALID_KINDS = ["shorts", "linkedin", "x", "newsletter"] as const;
 
 export const maxDuration = 60;
 
+/** Drafts the requested content format from a stored source's video titles. */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const sourceId = typeof body?.sourceId === "string" ? body.sourceId : "";
