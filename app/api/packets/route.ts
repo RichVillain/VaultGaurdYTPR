@@ -3,8 +3,10 @@ import { randomUUID } from "node:crypto";
 import { addPacket, getSource, listPackets } from "@/lib/store";
 import { synthesizePacket } from "@/lib/gemini";
 
+export const maxDuration = 60;
+
 export async function GET() {
-  return NextResponse.json({ packets: listPackets() });
+  return NextResponse.json({ packets: await listPackets() });
 }
 
 export async function POST(req: NextRequest) {
@@ -20,7 +22,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "A research question is required." }, { status: 400 });
   }
 
-  const sources = sourceIds.map((id) => getSource(id)).filter((s): s is NonNullable<typeof s> => Boolean(s));
+  const sources = (await Promise.all(sourceIds.map((id) => getSource(id)))).filter((s): s is NonNullable<typeof s> =>
+    Boolean(s)
+  );
   if (sources.length < 2) {
     return NextResponse.json({ error: "Selected sources could not be found." }, { status: 400 });
   }
@@ -30,7 +34,7 @@ export async function POST(req: NextRequest) {
     sources.map((s) => ({ title: s.title, videos: s.videos.map((v) => v.title) }))
   );
 
-  const packet = addPacket({
+  const packet = await addPacket({
     id: randomUUID(),
     title,
     question,

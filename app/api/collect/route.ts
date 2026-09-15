@@ -6,6 +6,11 @@ import { clusterTopics } from "@/lib/gemini";
 import { addSource } from "@/lib/store";
 import type { Source } from "@/lib/types";
 
+// Vercel Hobby's ceiling for a Node serverless function; large playlists
+// (many videos, sequential yt-dlp calls per URL) could still exceed this,
+// where Render's persistent process would not have.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const raw = typeof body?.urls === "string" ? body.urls : "";
@@ -41,7 +46,7 @@ export async function POST(req: NextRequest) {
         videos,
         clusters,
       };
-      addSource(source);
+      await addSource(source);
       created.push(source);
     } catch (err) {
       errors.push(`${url}: ${err instanceof Error ? err.message.slice(0, 200) : "extraction failed"}`);

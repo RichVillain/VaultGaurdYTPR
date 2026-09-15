@@ -1,77 +1,94 @@
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createClient } from "@supabase/supabase-js";
 import type { Packet, Source } from "./types";
 
-type Workspace = {
-  sources: Source[];
-  packets: Packet[];
+// Vercel serverless functions are stateless between invocations — no
+// persistent process, no shared filesystem. The v2 (Render) build used an
+// in-memory store backed by a JSON file, which is valid only for a single
+// long-lived Node process. Deployed on Vercel, that state would vanish (or
+// diverge) between requests, so this reads/writes Postgres via Supabase's
+// REST API instead — no DATABASE_URL needed, just the public anon key,
+// which is safe to use because these calls only ever run server-side inside
+// route handlers, never in a client bundle.
+function client() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_ANON_KEY;
+  if (!url || !key) {
+    throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY must be set for storage to work.");
+  }
+  return createClient(url, key);
+}
+
+type SourceRow = {
+  id: string;
+  title: string;
+  channel: string;
+  duration: string;
+  status: Source["status"];
+  tags: string[];
+  added: string;
+  transcript: string;
+  url: string;
+  videos: Source["videos"];
+  clusters: Source["clusters"];
 };
 
-const DATA_DIR = process.env.YTPR_DATA_DIR || join(process.cwd(), "data");
-const DATA_FILE = join(DATA_DIR, "workspace.json");
-
-function load(): Workspace {
-  try {
-    if (existsSync(DATA_FILE)) {
-      return JSON.parse(readFileSync(DATA_FILE, "utf8"));
-    }
-  } catch {
-    // Corrupt or unreadable state file: start clean rather than crash the server.
-  }
-  return { sources: [], packets: [] };
+function fromRow(row: SourceRow): Source {
+  const { id, title, channel, duration, status, tags, added, transcript, url, videos, clusters } = row;
+  return { id, title, channel, duration, status, tags, added, transcript, url, videos, clusters };
 }
 
-// Module-level singleton: this Next.js server runs as one persistent Node
-// process (not serverless), so an in-memory store is valid for the process
-// lifetime, backed by a JSON file so a restart doesn't lose everything.
-const state: Workspace = load();
-
-function persist() {
-  try {
-    if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-    writeFileSync(DATA_FILE, JSON.stringify(state, null, 2));
-  } catch {
-    // Best-effort persistence. An ephemeral disk (e.g. a fresh container) is a
-    // normal state for this app; in-memory data still serves the process.
-  }
+export async function listSources(): Promise<Source[]> {
+  const { data, error } = await client().from("ytpr_sources").select("*").order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(fromRow);
 }
 
-export function listSources(): Source[] {
-  return state.sources;
+export async function getSource(id: string): Promise<Source | undefined> {
+  const { data, error } = await client().from("ytpr_sources").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? fromRow(data) : undefined;
 }
 
-export function getSource(id: string): Source | undefined {
-  return state.sources.find((s) => s.id === id);
+export async function addSource(source: Source): Promise<Source> {
+  const { id, ...rest } = source;
+  const { data, error } = await client().from("ytpr_sources").insert({ id, ...rest }).select().single();
+  if (error) throw new Error(error.message);
+  return fromRow(data);
 }
 
-export function addSource(source: Source) {
-  state.sources = [source, ...state.sources.filter((s) => s.id !== source.id)];
-  persist();
-  return source;
+export async function listPackets(): Promise<Packet[]> {
+  const { data, error } = await client().from("ytpr_packets").select("*").order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    title: row.title,
+    question: row.question,
+    sourceIds: row.source_ids,
+    brief: row.brief,
+    createdAt: row.created_at,
+  }));
 }
 
-export function updateSource(id: string, patch: Partial<Source>) {
-  const source = getSource(id);
-  if (!source) return undefined;
-  Object.assign(source, patch);
-  persist();
-  return source;
-}
-
-export function listPackets(): Packet[] {
-  return state.packets;
-}
-
-export function addPacket(packet: Packet) {
-  state.packets = [packet, ...state.packets];
-  persist();
-  return packet;
-}
-
-if (!existsSync(dirname(DATA_FILE))) {
-  try {
-    mkdirSync(dirname(DATA_FILE), { recursive: true });
-  } catch {
-    // ignore — persist() will retry and no-op safely if this keeps failing
-  }
+export async function addPacket(packet: Packet): Promise<Packet> {
+  const { data, error } = await client()
+    .from("ytpr_packets")
+    .insert({
+      id: packet.id,
+      title: packet.title,
+      question: packet.question,
+      source_ids: packet.sourceIds,
+      brief: packet.brief,
+      created_at: packet.createdAt,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return {
+    id: data.id,
+    title: data.title,
+    question: data.question,
+    sourceIds: data.source_ids,
+    brief: data.brief,
+    createdAt: data.created_at,
+  };
 }

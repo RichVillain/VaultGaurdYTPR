@@ -15,7 +15,7 @@ no AI synthesis, designed for local-network use on a phone. This rebuild:
   question, get a source-attributed brief.
 - Adds **Gemini-drafted repurposing**: Shorts hooks, LinkedIn posts, X
   threads, and newsletter excerpts drafted from a source's video titles.
-- Is a real deployed app (Next.js on Render) instead of a phone-only local
+- Is a real deployed app (Next.js on Vercel) instead of a phone-only local
   script — reachable from anywhere, not just the same Wi-Fi network.
 
 Extraction still runs entirely server-side via `yt-dlp` (flat-playlist
@@ -51,20 +51,31 @@ real work. Without it, those features fall back to a clearly-labeled
 placeholder rather than crashing — the app is still browsable and
 extraction still works.
 
+Also requires `SUPABASE_URL` and `SUPABASE_ANON_KEY` — workspace storage runs
+through Supabase's REST API (see Data model below), not a local file, so
+these are required, not optional; without them, collecting a source or
+generating a packet will fail.
+
 ```
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-2.5-flash-lite   # optional, this is the default
-YTPR_DATA_DIR=./data                 # optional, where workspace.json is stored
-PORT=3000                            # optional
+SUPABASE_URL=...
+SUPABASE_ANON_KEY=...
+PORT=3000                            # optional, mainly for local/Render use
 ```
 
 ## Data model
 
-Workspace state (`sources`, `packets`) lives in a module-level store backed
-by a JSON file (`data/workspace.json` by default) — this app runs as one
-persistent Node process (`next start`), not serverless functions, so this is
-valid for the process lifetime and survives most restarts. It is not a
-database; a fresh container (e.g. a new Render deploy) starts empty.
+Workspace state (`ytpr_sources`, `ytpr_packets`) lives in Postgres via
+Supabase's REST API (the public anon key, safe here because it's only ever
+used server-side inside route handlers). This app deploys as Vercel
+serverless functions — no persistent process and no shared filesystem
+between invocations — so state can't live in memory or a local JSON file
+the way a single long-running server could hold it. The tables have RLS
+enabled but with an open policy: this app has no user-auth layer (a
+single-operator tool, matching the original design), so there's no per-user
+data to scope access to. That would need to change before this became a
+multi-tenant product.
 
 ## VaultGuard RR3 relationship
 
@@ -76,6 +87,17 @@ follow-up, not part of this rebuild.
 
 ## Deploy
 
-Runs as a single Node web service (e.g. Render): `npm install && npm run
-build` to build, `npm start` to run (`next start -p $PORT`). `yt-dlp-exec`
-fetches a standalone `yt-dlp` binary at install time — no Python dependency.
+Deploys to Vercel (git-linked; auto-builds on push to `main`) as Node
+serverless functions. `youtube-dl-exec` fetches a standalone `yt-dlp` binary
+at install time — no Python dependency — and needs to be traced into the
+function bundle correctly, which Vercel's Next.js build handles
+automatically for `child_process`-invoked binaries resolved from
+`node_modules`.
+
+Collect/packet/repurpose routes set `maxDuration = 60` (the ceiling on
+Vercel's Hobby plan) since yt-dlp extraction and Gemini calls can run long;
+a very large playlist could still exceed it, which a persistent server
+(e.g. Render) would not hit. Can also run as a single Node web service
+(`npm install && npm run build`, `npm start`) if that matters more than
+serverless for your use case — the Supabase-backed store works the same
+either way.

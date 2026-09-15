@@ -4,13 +4,15 @@ import { draftRepurpose } from "@/lib/gemini";
 
 const VALID_KINDS = ["shorts", "linkedin", "x", "newsletter"] as const;
 
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const sourceId = typeof body?.sourceId === "string" ? body.sourceId : "";
   const kind = VALID_KINDS.includes(body?.kind) ? body.kind : null;
 
   if (!kind) return NextResponse.json({ error: "Unknown draft kind." }, { status: 400 });
-  const source = getSource(sourceId);
+  const source = await getSource(sourceId);
   if (!source) return NextResponse.json({ error: "Source not found." }, { status: 404 });
 
   const draft = await draftRepurpose(
