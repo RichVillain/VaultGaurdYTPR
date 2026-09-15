@@ -51,30 +51,42 @@ real work. Without it, those features fall back to a clearly-labeled
 placeholder rather than crashing — the app is still browsable and
 extraction still works.
 
-Also requires `SUPABASE_URL` and `SUPABASE_ANON_KEY` — workspace storage runs
-through Supabase's REST API (see Data model below), not a local file, so
-these are required, not optional; without them, collecting a source or
-generating a packet will fail.
+Also requires `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `YTPR_ACCESS_KEY` —
+workspace storage runs through Supabase (see Data model below), not a local
+file, so these are required, not optional; without them, collecting a
+source or generating a packet will fail.
 
 ```
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-2.5-flash-lite   # optional, this is the default
 SUPABASE_URL=...
 SUPABASE_ANON_KEY=...
+YTPR_ACCESS_KEY=...                  # shared secret gating the Supabase RPC functions below
 PORT=3000                            # optional, mainly for local/Render use
 ```
 
 ## Data model
 
 Workspace state (`ytpr_sources`, `ytpr_packets`) lives in Postgres via
-Supabase's REST API (the public anon key, safe here because it's only ever
-used server-side inside route handlers). This app deploys as Vercel
-serverless functions — no persistent process and no shared filesystem
-between invocations — so state can't live in memory or a local JSON file
-the way a single long-running server could hold it. The tables have RLS
-enabled but with an open policy: this app has no user-auth layer (a
-single-operator tool, matching the original design), so there's no per-user
-data to scope access to. That would need to change before this became a
+Supabase. This app deploys as Vercel serverless functions — no persistent
+process and no shared filesystem between invocations — so state can't live
+in memory or a local JSON file the way a single long-running server could
+hold it.
+
+The tables have RLS enabled with **no policies** (default-deny for
+`anon`/`authenticated`): direct table access via PostgREST is blocked
+entirely. All reads and writes go through `SECURITY DEFINER` RPC functions
+(`ytpr_list_sources`, `ytpr_add_source`, etc. — see the `ytpr_rpc_gate`
+migration) that check `YTPR_ACCESS_KEY` as a SHA-256 hash before touching
+any row. This matters because the Supabase anon key is public by design
+(RLS is the real boundary, not key secrecy) — an earlier version of this
+app paired the anon key with an open `using (true)` policy, which meant
+anyone holding that key could read or write these tables directly,
+bypassing the app (and its Vercel deployment protection) entirely.
+
+This is still a single-operator tool with one shared secret, not per-user
+auth — there's no concept of "whose" source or packet a row is. That would
+need real multi-user auth (Supabase Auth, most likely) before this became a
 multi-tenant product.
 
 ## VaultGuard RR3 relationship
@@ -89,15 +101,22 @@ follow-up, not part of this rebuild.
 
 Deploys to Vercel (git-linked; auto-builds on push to `main`) as Node
 serverless functions. `youtube-dl-exec` fetches a standalone `yt-dlp` binary
-at install time — no Python dependency — and needs to be traced into the
-function bundle correctly, which Vercel's Next.js build handles
-automatically for `child_process`-invoked binaries resolved from
-`node_modules`.
+at install time — no Python dependency — but Next.js's output file tracing
+doesn't follow `child_process`-invoked binaries, so `next.config.js`
+explicitly includes it (`outputFileTracingIncludes`) for the `/api/collect`
+function; without that it can be missing from the deployed bundle.
 
-Collect/packet/repurpose routes set `maxDuration = 60` (the ceiling on
-Vercel's Hobby plan) since yt-dlp extraction and Gemini calls can run long;
-a very large playlist could still exceed it, which a persistent server
+Collect/packet/repurpose routes set `maxDuration = 60`, this app's own
+configured cap (not a hard platform ceiling — Vercel's actual limits vary
+by plan and compute mode) since yt-dlp extraction and Gemini calls can run
+long; a large playlist could still exceed it, which a persistent server
 (e.g. Render) would not hit. Can also run as a single Node web service
 (`npm install && npm run build`, `npm start`) if that matters more than
 serverless for your use case — the Supabase-backed store works the same
 either way.
+
+This project's Vercel deployment protection (Vercel Authentication) is
+already enabled for all non-custom-domain URLs, which is the actual
+mitigation for "any internet caller can trigger Gemini/yt-dlp work" — worth
+knowing before attaching a custom domain, which bypasses it unless
+reconfigured.

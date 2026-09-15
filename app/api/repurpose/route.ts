@@ -12,13 +12,18 @@ export async function POST(req: NextRequest) {
   const kind = VALID_KINDS.includes(body?.kind) ? body.kind : null;
 
   if (!kind) return NextResponse.json({ error: "Unknown draft kind." }, { status: 400 });
-  const source = await getSource(sourceId);
-  if (!source) return NextResponse.json({ error: "Source not found." }, { status: 404 });
 
-  const draft = await draftRepurpose(
-    kind,
-    source.title,
-    source.videos.map((v) => v.title)
-  );
-  return NextResponse.json({ draft });
+  try {
+    const source = await getSource(sourceId);
+    if (!source) return NextResponse.json({ error: "Source not found." }, { status: 404 });
+
+    const draft = await draftRepurpose(
+      kind,
+      source.title,
+      source.videos.map((v) => v.title)
+    );
+    return NextResponse.json({ draft });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "failed to generate draft" }, { status: 500 });
+  }
 }

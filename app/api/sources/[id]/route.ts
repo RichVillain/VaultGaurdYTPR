@@ -3,7 +3,11 @@ import { getSource } from "@/lib/store";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const source = await getSource(id);
-  if (!source) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  return NextResponse.json({ source });
+  try {
+    const source = await getSource(id);
+    if (!source) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    return NextResponse.json({ source });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "failed to load source" }, { status: 500 });
+  }
 }

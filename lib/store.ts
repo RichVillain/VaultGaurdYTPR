@@ -2,13 +2,18 @@ import { createClient } from "@supabase/supabase-js";
 import type { Packet, Source } from "./types";
 
 // Vercel serverless functions are stateless between invocations — no
-// persistent process, no shared filesystem. The v2 (Render) build used an
-// in-memory store backed by a JSON file, which is valid only for a single
-// long-lived Node process. Deployed on Vercel, that state would vanish (or
-// diverge) between requests, so this reads/writes Postgres via Supabase's
-// REST API instead — no DATABASE_URL needed, just the public anon key,
-// which is safe to use because these calls only ever run server-side inside
-// route handlers, never in a client bundle.
+// persistent process, no shared filesystem — so this reads/writes Postgres
+// via Supabase's REST API rather than an in-memory/file store.
+//
+// It does NOT use plain table access with the anon key. The anon key is
+// public by Supabase's own design (RLS is the real boundary, not key
+// secrecy), and an earlier version of this file paired it with an open
+// "using (true)" RLS policy — meaning anyone holding that key could read or
+// write these tables directly via PostgREST, bypassing this app (and its
+// Vercel auth) entirely. The tables now have zero policies (RLS enabled,
+// default-deny), and all access goes through SECURITY DEFINER RPC functions
+// gated by YTPR_ACCESS_KEY — a secret that lives only in this server's
+// environment and is never sent to the client.
 function client() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_ANON_KEY;
@@ -16,6 +21,12 @@ function client() {
     throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY must be set for storage to work.");
   }
   return createClient(url, key);
+}
+
+function secret() {
+  const value = process.env.YTPR_ACCESS_KEY;
+  if (!value) throw new Error("YTPR_ACCESS_KEY must be set for storage to work.");
+  return value;
 }
 
 type SourceRow = {
@@ -38,28 +49,40 @@ function fromRow(row: SourceRow): Source {
 }
 
 export async function listSources(): Promise<Source[]> {
-  const { data, error } = await client().from("ytpr_sources").select("*").order("created_at", { ascending: false });
+  const { data, error } = await client().rpc("ytpr_list_sources", { secret: secret() });
   if (error) throw new Error(error.message);
   return (data ?? []).map(fromRow);
 }
 
 export async function getSource(id: string): Promise<Source | undefined> {
-  const { data, error } = await client().from("ytpr_sources").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await client().rpc("ytpr_get_source", { secret: secret(), p_id: id });
   if (error) throw new Error(error.message);
-  return data ? fromRow(data) : undefined;
+  return data?.[0] ? fromRow(data[0]) : undefined;
 }
 
 export async function addSource(source: Source): Promise<Source> {
-  const { id, ...rest } = source;
-  const { data, error } = await client().from("ytpr_sources").insert({ id, ...rest }).select().single();
+  const { data, error } = await client().rpc("ytpr_add_source", {
+    secret: secret(),
+    p_id: source.id,
+    p_title: source.title,
+    p_channel: source.channel,
+    p_duration: source.duration,
+    p_status: source.status,
+    p_tags: source.tags,
+    p_added: source.added,
+    p_transcript: source.transcript,
+    p_url: source.url,
+    p_videos: source.videos,
+    p_clusters: source.clusters,
+  });
   if (error) throw new Error(error.message);
-  return fromRow(data);
+  return fromRow(data[0]);
 }
 
 export async function listPackets(): Promise<Packet[]> {
-  const { data, error } = await client().from("ytpr_packets").select("*").order("created_at", { ascending: false });
+  const { data, error } = await client().rpc("ytpr_list_packets", { secret: secret() });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({
+  return (data ?? []).map((row: { id: string; title: string; question: string; source_ids: string[]; brief: string; created_at: string }) => ({
     id: row.id,
     title: row.title,
     question: row.question,
@@ -70,25 +93,23 @@ export async function listPackets(): Promise<Packet[]> {
 }
 
 export async function addPacket(packet: Packet): Promise<Packet> {
-  const { data, error } = await client()
-    .from("ytpr_packets")
-    .insert({
-      id: packet.id,
-      title: packet.title,
-      question: packet.question,
-      source_ids: packet.sourceIds,
-      brief: packet.brief,
-      created_at: packet.createdAt,
-    })
-    .select()
-    .single();
+  const { data, error } = await client().rpc("ytpr_add_packet", {
+    secret: secret(),
+    p_id: packet.id,
+    p_title: packet.title,
+    p_question: packet.question,
+    p_source_ids: packet.sourceIds,
+    p_brief: packet.brief,
+    p_created_at: packet.createdAt,
+  });
   if (error) throw new Error(error.message);
+  const row = data[0];
   return {
-    id: data.id,
-    title: data.title,
-    question: data.question,
-    sourceIds: data.source_ids,
-    brief: data.brief,
-    createdAt: data.created_at,
+    id: row.id,
+    title: row.title,
+    question: row.question,
+    sourceIds: row.source_ids,
+    brief: row.brief,
+    createdAt: row.created_at,
   };
 }
