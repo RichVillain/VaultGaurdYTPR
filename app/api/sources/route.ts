@@ -2,5 +2,9 @@ import { NextResponse } from "next/server";
 import { listSources } from "@/lib/store";
 
 export async function GET() {
-  return NextResponse.json({ sources: listSources() });
+  try {
+    return NextResponse.json({ sources: await listSources() });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "failed to load sources" }, { status: 500 });
+  }
 }

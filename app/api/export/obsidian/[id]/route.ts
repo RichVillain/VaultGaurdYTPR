@@ -4,7 +4,13 @@ import { buildObsidianVault } from "@/lib/obsidian";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const source = getSource(id);
+
+  let source;
+  try {
+    source = await getSource(id);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "failed to load source" }, { status: 500 });
+  }
   if (!source) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   const zip = await buildObsidianVault(source, source.clusters);

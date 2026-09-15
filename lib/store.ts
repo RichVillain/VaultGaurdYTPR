@@ -1,77 +1,115 @@
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createClient } from "@supabase/supabase-js";
 import type { Packet, Source } from "./types";
 
-type Workspace = {
-  sources: Source[];
-  packets: Packet[];
+// Vercel serverless functions are stateless between invocations — no
+// persistent process, no shared filesystem — so this reads/writes Postgres
+// via Supabase's REST API rather than an in-memory/file store.
+//
+// It does NOT use plain table access with the anon key. The anon key is
+// public by Supabase's own design (RLS is the real boundary, not key
+// secrecy), and an earlier version of this file paired it with an open
+// "using (true)" RLS policy — meaning anyone holding that key could read or
+// write these tables directly via PostgREST, bypassing this app (and its
+// Vercel auth) entirely. The tables now have zero policies (RLS enabled,
+// default-deny), and all access goes through SECURITY DEFINER RPC functions
+// gated by YTPR_ACCESS_KEY — a secret that lives only in this server's
+// environment and is never sent to the client.
+function client() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_ANON_KEY;
+  if (!url || !key) {
+    throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY must be set for storage to work.");
+  }
+  return createClient(url, key);
+}
+
+function secret() {
+  const value = process.env.YTPR_ACCESS_KEY;
+  if (!value) throw new Error("YTPR_ACCESS_KEY must be set for storage to work.");
+  return value;
+}
+
+type SourceRow = {
+  id: string;
+  title: string;
+  channel: string;
+  duration: string;
+  status: Source["status"];
+  tags: string[];
+  added: string;
+  transcript: string;
+  url: string;
+  videos: Source["videos"];
+  clusters: Source["clusters"];
 };
 
-const DATA_DIR = process.env.YTPR_DATA_DIR || join(process.cwd(), "data");
-const DATA_FILE = join(DATA_DIR, "workspace.json");
-
-function load(): Workspace {
-  try {
-    if (existsSync(DATA_FILE)) {
-      return JSON.parse(readFileSync(DATA_FILE, "utf8"));
-    }
-  } catch {
-    // Corrupt or unreadable state file: start clean rather than crash the server.
-  }
-  return { sources: [], packets: [] };
+function fromRow(row: SourceRow): Source {
+  const { id, title, channel, duration, status, tags, added, transcript, url, videos, clusters } = row;
+  return { id, title, channel, duration, status, tags, added, transcript, url, videos, clusters };
 }
 
-// Module-level singleton: this Next.js server runs as one persistent Node
-// process (not serverless), so an in-memory store is valid for the process
-// lifetime, backed by a JSON file so a restart doesn't lose everything.
-const state: Workspace = load();
-
-function persist() {
-  try {
-    if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-    writeFileSync(DATA_FILE, JSON.stringify(state, null, 2));
-  } catch {
-    // Best-effort persistence. An ephemeral disk (e.g. a fresh container) is a
-    // normal state for this app; in-memory data still serves the process.
-  }
+export async function listSources(): Promise<Source[]> {
+  const { data, error } = await client().rpc("ytpr_list_sources", { secret: secret() });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(fromRow);
 }
 
-export function listSources(): Source[] {
-  return state.sources;
+export async function getSource(id: string): Promise<Source | undefined> {
+  const { data, error } = await client().rpc("ytpr_get_source", { secret: secret(), p_id: id });
+  if (error) throw new Error(error.message);
+  return data?.[0] ? fromRow(data[0]) : undefined;
 }
 
-export function getSource(id: string): Source | undefined {
-  return state.sources.find((s) => s.id === id);
+export async function addSource(source: Source): Promise<Source> {
+  const { data, error } = await client().rpc("ytpr_add_source", {
+    secret: secret(),
+    p_id: source.id,
+    p_title: source.title,
+    p_channel: source.channel,
+    p_duration: source.duration,
+    p_status: source.status,
+    p_tags: source.tags,
+    p_added: source.added,
+    p_transcript: source.transcript,
+    p_url: source.url,
+    p_videos: source.videos,
+    p_clusters: source.clusters,
+  });
+  if (error) throw new Error(error.message);
+  return fromRow(data[0]);
 }
 
-export function addSource(source: Source) {
-  state.sources = [source, ...state.sources.filter((s) => s.id !== source.id)];
-  persist();
-  return source;
+export async function listPackets(): Promise<Packet[]> {
+  const { data, error } = await client().rpc("ytpr_list_packets", { secret: secret() });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row: { id: string; title: string; question: string; source_ids: string[]; brief: string; created_at: string }) => ({
+    id: row.id,
+    title: row.title,
+    question: row.question,
+    sourceIds: row.source_ids,
+    brief: row.brief,
+    createdAt: row.created_at,
+  }));
 }
 
-export function updateSource(id: string, patch: Partial<Source>) {
-  const source = getSource(id);
-  if (!source) return undefined;
-  Object.assign(source, patch);
-  persist();
-  return source;
-}
-
-export function listPackets(): Packet[] {
-  return state.packets;
-}
-
-export function addPacket(packet: Packet) {
-  state.packets = [packet, ...state.packets];
-  persist();
-  return packet;
-}
-
-if (!existsSync(dirname(DATA_FILE))) {
-  try {
-    mkdirSync(dirname(DATA_FILE), { recursive: true });
-  } catch {
-    // ignore — persist() will retry and no-op safely if this keeps failing
-  }
+export async function addPacket(packet: Packet): Promise<Packet> {
+  const { data, error } = await client().rpc("ytpr_add_packet", {
+    secret: secret(),
+    p_id: packet.id,
+    p_title: packet.title,
+    p_question: packet.question,
+    p_source_ids: packet.sourceIds,
+    p_brief: packet.brief,
+    p_created_at: packet.createdAt,
+  });
+  if (error) throw new Error(error.message);
+  const row = data[0];
+  return {
+    id: row.id,
+    title: row.title,
+    question: row.question,
+    sourceIds: row.source_ids,
+    brief: row.brief,
+    createdAt: row.created_at,
+  };
 }
