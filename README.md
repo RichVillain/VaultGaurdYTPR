@@ -89,6 +89,23 @@ auth — there's no concept of "whose" source or packet a row is. That would
 need real multi-user auth (Supabase Auth, most likely) before this became a
 multi-tenant product.
 
+### Database setup
+
+Run the migrations in `supabase/migrations/` against your Supabase project
+(in order — via the SQL editor, the Supabase CLI, or `apply_migration`).
+They create the tables and the RPC gate, but deliberately do **not** set
+your secret — a checked-in migration should never contain anyone's actual
+key or its hash. After running them, set it once:
+
+```sql
+insert into public.ytpr_config (key, value)
+values ('access_key_sha256', encode(digest('YOUR_YTPR_ACCESS_KEY', 'sha256'), 'hex'))
+on conflict (key) do update set value = excluded.value;
+```
+
+Use the exact same value for `YTPR_ACCESS_KEY` in your Vercel/Render
+environment variables — the app hashes it the same way to compare.
+
 ## VaultGuard RR3 relationship
 
 `vaultgaurd-RR3-Protocol` is the companion protocol repository with its own
