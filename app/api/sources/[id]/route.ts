@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSource } from "@/lib/store";
 
+/** Returns the stored source for the route ID, distinguishing missing data from storage failures. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {

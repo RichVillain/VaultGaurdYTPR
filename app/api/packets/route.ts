@@ -5,6 +5,7 @@ import { synthesizePacket } from "@/lib/gemini";
 
 export const maxDuration = 60;
 
+/** Returns all stored research packets, including a JSON error if storage is unavailable. */
 export async function GET() {
   try {
     return NextResponse.json({ packets: await listPackets() });
@@ -13,6 +14,7 @@ export async function GET() {
   }
 }
 
+/** Validates selected source IDs, synthesizes a packet from those found, and persists the result. */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const sourceIds: string[] = Array.isArray(body?.sourceIds) ? body.sourceIds : [];

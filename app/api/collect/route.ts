@@ -11,6 +11,7 @@ import type { Source } from "@/lib/types";
 // where Render's persistent process would not have.
 export const maxDuration = 60;
 
+/** Extracts and persists each submitted YouTube source, returning successes alongside per-URL failures. */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const raw = typeof body?.urls === "string" ? body.urls : "";

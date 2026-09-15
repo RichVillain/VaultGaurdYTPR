@@ -14,6 +14,11 @@ import type { Packet, Source } from "./types";
 // default-deny), and all access goes through SECURITY DEFINER RPC functions
 // gated by YTPR_ACCESS_KEY — a secret that lives only in this server's
 // environment and is never sent to the client.
+/**
+ * Creates the Supabase client used for server-side storage RPCs.
+ *
+ * @throws When `SUPABASE_URL` or `SUPABASE_ANON_KEY` is not configured.
+ */
 function client() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_ANON_KEY;
@@ -23,6 +28,11 @@ function client() {
   return createClient(url, key);
 }
 
+/**
+ * Returns the shared secret supplied to storage RPCs.
+ *
+ * @throws When `YTPR_ACCESS_KEY` is not configured.
+ */
 function secret() {
   const value = process.env.YTPR_ACCESS_KEY;
   if (!value) throw new Error("YTPR_ACCESS_KEY must be set for storage to work.");
@@ -43,23 +53,39 @@ type SourceRow = {
   clusters: Source["clusters"];
 };
 
+/** Maps a database source row to the application model, omitting storage-only fields. */
 function fromRow(row: SourceRow): Source {
   const { id, title, channel, duration, status, tags, added, transcript, url, videos, clusters } = row;
   return { id, title, channel, duration, status, tags, added, transcript, url, videos, clusters };
 }
 
+/**
+ * Returns all persisted sources in descending creation order.
+ *
+ * @throws When storage configuration is missing or the storage request fails.
+ */
 export async function listSources(): Promise<Source[]> {
   const { data, error } = await client().rpc("ytpr_list_sources", { secret: secret() });
   if (error) throw new Error(error.message);
   return (data ?? []).map(fromRow);
 }
 
+/**
+ * Returns the source with the given ID, or `undefined` when it does not exist.
+ *
+ * @throws When storage configuration is missing or the storage request fails.
+ */
 export async function getSource(id: string): Promise<Source | undefined> {
   const { data, error } = await client().rpc("ytpr_get_source", { secret: secret(), p_id: id });
   if (error) throw new Error(error.message);
   return data?.[0] ? fromRow(data[0]) : undefined;
 }
 
+/**
+ * Persists a source and returns the stored representation.
+ *
+ * @throws When storage configuration is missing or the storage request fails.
+ */
 export async function addSource(source: Source): Promise<Source> {
   const { data, error } = await client().rpc("ytpr_add_source", {
     secret: secret(),
@@ -79,6 +105,11 @@ export async function addSource(source: Source): Promise<Source> {
   return fromRow(data[0]);
 }
 
+/**
+ * Returns all persisted research packets in descending creation order.
+ *
+ * @throws When storage configuration is missing or the storage request fails.
+ */
 export async function listPackets(): Promise<Packet[]> {
   const { data, error } = await client().rpc("ytpr_list_packets", { secret: secret() });
   if (error) throw new Error(error.message);
@@ -92,6 +123,11 @@ export async function listPackets(): Promise<Packet[]> {
   }));
 }
 
+/**
+ * Persists a research packet and returns the stored representation.
+ *
+ * @throws When storage configuration is missing or the storage request fails.
+ */
 export async function addPacket(packet: Packet): Promise<Packet> {
   const { data, error } = await client().rpc("ytpr_add_packet", {
     secret: secret(),
